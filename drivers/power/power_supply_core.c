@@ -26,28 +26,6 @@ EXPORT_SYMBOL_GPL(power_supply_class);
 static struct device_type power_supply_dev_type;
 
 /**
- * power_supply_set_voltage_limit - set current limit
- * @psy:	the power supply to control
- * @limit:	current limit in uV from the power supply.
- *		0 will disable the power supply.
- *
- * This function will set a maximum supply current from a source
- * and it will disable the charger when limit is 0.
- */
-int power_supply_set_voltage_limit(struct power_supply *psy, int limit)
-{
-	const union power_supply_propval ret = {limit,};
-
-	if (psy->set_property)
-		return psy->set_property(psy, POWER_SUPPLY_PROP_VOLTAGE_MAX,
-								&ret);
-
-	return -ENXIO;
-}
-EXPORT_SYMBOL(power_supply_set_voltage_limit);
-
-
-/**
  * power_supply_set_current_limit - set current limit
  * @psy:	the power supply to control
  * @limit:	current limit in uA from the power supply.
@@ -229,7 +207,19 @@ static void power_supply_changed_work(struct work_struct *work)
 	spin_unlock_irqrestore(&psy->changed_lock, flags);
 }
 
-void power_supply_changed(struct power_supply *psy)
+
+/* in some cases, the phone report changes too frequently, and the socket buffer is used up. then, the user programe poll uevent error.
+*/
+struct zte_power_supply_report_data_type
+{
+	spinlock_t lock;
+	unsigned long report_time;
+	struct delayed_work work;
+	struct wake_lock wakelock;
+	struct power_supply *psy[5];
+};
+struct zte_power_supply_report_data_type zte_power_supply_report_data;
+void __power_supply_changed(struct power_supply *psy)
 {
 	unsigned long flags;
 
@@ -241,7 +231,62 @@ void power_supply_changed(struct power_supply *psy)
 	spin_unlock_irqrestore(&psy->changed_lock, flags);
 	schedule_work(&psy->changed_work);
 }
+void power_supply_changed(struct power_supply *psy)
+{
+	int i;
+	unsigned long flags;
+	int report_delayed = 0;
+	spin_lock_irqsave(&(zte_power_supply_report_data.lock), flags);
+
+	if(jiffies - zte_power_supply_report_data.report_time >= HZ/2) {
+		zte_power_supply_report_data.report_time = jiffies;
+		report_delayed = 0;
+	} else {
+		for(i = 0; i < 5; i++) {
+			if(zte_power_supply_report_data.psy[i] == psy)
+				break;
+			else if(zte_power_supply_report_data.psy[i])
+				continue;
+			else {
+				zte_power_supply_report_data.psy[i] = psy;
+				report_delayed++;
+				break;
+			}
+		}
+	}
+	spin_unlock_irqrestore(&(zte_power_supply_report_data.lock), flags);
+
+	if(5 == i || 0 == report_delayed)
+		__power_supply_changed(psy);
+	else {
+		wake_lock(&(zte_power_supply_report_data.wakelock));
+		schedule_delayed_work(&(zte_power_supply_report_data.work), HZ/2);
+	}
+}
 EXPORT_SYMBOL_GPL(power_supply_changed);
+
+static void zte_power_supply_report_worker(struct work_struct *work)
+{
+	int i;
+	unsigned long flags;
+	struct power_supply *psy[5];
+
+	spin_lock_irqsave(&(zte_power_supply_report_data.lock), flags);
+	for(i = 0; i < 5; i++) {
+		psy[i] = zte_power_supply_report_data.psy[i];
+		zte_power_supply_report_data.report_time = jiffies;
+		zte_power_supply_report_data.psy[i] = NULL;
+	}
+	spin_unlock_irqrestore(&(zte_power_supply_report_data.lock), flags);
+
+	for(i = 0; i < 5; i++) {
+		if(psy[i]) {
+			__power_supply_changed(psy[i]);
+		}
+	}
+	wake_unlock(&(zte_power_supply_report_data.wakelock));
+}
+
 
 static int __power_supply_am_i_supplied(struct device *dev, void *data)
 {
@@ -412,6 +457,7 @@ EXPORT_SYMBOL_GPL(power_supply_unregister);
 
 static int __init power_supply_class_init(void)
 {
+	int i;
 	power_supply_class = class_create(THIS_MODULE, "power_supply");
 
 	if (IS_ERR(power_supply_class))
@@ -419,6 +465,13 @@ static int __init power_supply_class_init(void)
 
 	power_supply_class->dev_uevent = power_supply_uevent;
 	power_supply_init_attrs(&power_supply_dev_type);
+
+	spin_lock_init(&(zte_power_supply_report_data.lock));
+	wake_lock_init(&(zte_power_supply_report_data.wakelock), WAKE_LOCK_SUSPEND, "zte_powersupply_report");
+	INIT_DELAYED_WORK(&(zte_power_supply_report_data.work), zte_power_supply_report_worker);
+	zte_power_supply_report_data.report_time = 0;
+	for(i = 0; i < 5; i++)
+		zte_power_supply_report_data.psy[i] =NULL;
 
 	return 0;
 }
