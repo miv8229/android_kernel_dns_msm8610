@@ -1486,7 +1486,11 @@ endif # MSM_IDLE_STATS
 config DNS_s4508
 	bool "Device tree for dns s4508"
 	default n
-
+	
+config NO_ERROR_ON_MISMATCH
+	bool
+	default y
+	
 config CPU_HAS_L2_PMU
 	bool "L2CC PMU Support"
 	help

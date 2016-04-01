@@ -36,7 +36,7 @@
 				qcom,slave-id = <0x6c 0x300a 0x5648>;
 				qcom,csiphy-sd-index = <0x0>;
 				qcom,csid-sd-index = <0x0>;
-//  				qcom,actuator-src = <&actuator0>;
+  				qcom,actuator-src = <&actuator0>;
 				qcom,led-flash-src = <&led_flash0>;
 				qcom,mount-angle = <90>;
 				qcom,sensor-name = "skuf_ov5648_p5v23c";
