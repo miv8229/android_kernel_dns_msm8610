@@ -38,6 +38,12 @@
         qcom,ext-spk-amp-gpio = <&msmgpio 92 0x0>;
     };
 
+    led_multi {
+		compatible = "prowave,leds-multi";
+		status = "okay";
+		gpios = <&msmgpio 79 0>;
+		prowave,name = "red"; //A202
+	      };
     i2c@f9925000 {
 		stk@48 {
 			compatible = "stk,stk3x1x";

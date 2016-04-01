@@ -32,7 +32,7 @@
 #ifndef __STK_DEFINES_H
 #define __STK_DEFINES_H
 
-#define ALS_NAME "light"
+#define ALS_NAME "stk3x1x-ls"
 #define PS_NAME "proximity"
 #define FTM_LIGHT_SENSOR_DELAY    0xA8
 
